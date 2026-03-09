@@ -34,6 +34,9 @@ function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-md p-8">
+          <div className="text-center mb-2">
+            <span className="text-blue-600 font-semibold uppercase tracking-wider text-xs">Login Page</span>
+          </div>
           <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">
             Welcome Back
           </h1>

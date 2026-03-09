@@ -11,7 +11,7 @@ function Register() {
   async function register(e) {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: mail,
@@ -36,6 +36,9 @@ function Register() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-md p-8">
+          <div className="text-center mb-2">
+            <span className="text-blue-600 font-semibold uppercase tracking-wider text-xs">Registration Page</span>
+          </div>
           <h1 className="text-3xl font-bold text-center mb-2 text-gray-900">
             Create Account
           </h1>
@@ -50,7 +53,7 @@ function Register() {
               </label>
               <input
                 id="email"
-                type="e-mail"
+                type="email"
                 placeholder="Enter your email"
                 value={mail}
                 onChange={(e) => setMail(e.target.value)}
