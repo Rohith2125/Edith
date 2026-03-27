@@ -61,13 +61,21 @@ const InterviewPage = () => {
         try {
             const response = await api.post("/next-question", {
                 session_id: sessionId,
-                answer: answer
+                answer: answer,
+                previous_question: currentQuestion
             });
 
-            if (response.data.message === "interview_completed") {
+            const { type, question, message } = response.data;
+
+            if (type === "completed" || message === "interview_completed") {
                 setStatus("completed");
+            } else if (type === "question") {
+                setCurrentQuestion(question);
+                setAnswer("");
+                setStatus("interviewing");
             } else {
-                setCurrentQuestion(response.data.response);
+                // Fallback for old responses or unexpected formats
+                setCurrentQuestion(response.data.response || response.data.question);
                 setAnswer("");
                 setStatus("interviewing");
             }

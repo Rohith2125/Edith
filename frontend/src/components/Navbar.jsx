@@ -37,6 +37,12 @@ const Navbar = () => {
                             HR Dashboard
                         </Link>
                         <Link 
+                            to="/history" 
+                            className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                        >
+                            Interview History
+                        </Link>
+                        <Link 
                             to="/interview" 
                             className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
                         >

@@ -5,6 +5,7 @@ import Interview from "./Pages/Interview";
 import ChatInterview from "./Pages/ChatInterview";
 import VoiceInterview from "./Pages/VoiceInterview";
 import HRDashboard from "./HRpages/HRDashboard";
+import InterviewHistory from "./HRpages/InterviewHistory";
 import Navbar from "./components/Navbar";
 import InterviewPage from "./Pages/InterviewPage";
 
@@ -24,6 +25,7 @@ function App() {
           <Route path="/chat" element={<ChatInterview />} />
           <Route path="/voice" element={<VoiceInterview />} />
           <Route path="/hr-dashboard" element={<HRDashboard />} />
+          <Route path="/history" element={<InterviewHistory />} />
           <Route path="/interview/:sessionId" element={<InterviewPage />} />
         </Routes>
       </div>
