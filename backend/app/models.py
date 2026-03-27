@@ -35,3 +35,4 @@ class StartInterviewRequest(BaseModel):
 class NextQuestionRequest(BaseModel):
     session_id: str
     answer: str
+    previous_question: str

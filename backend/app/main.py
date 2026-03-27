@@ -11,11 +11,12 @@ from app.models import (
     StartInterviewRequest, 
     NextQuestionRequest
 )
-from app.LLM.llm_service import generate_first_question, evaluate_and_continue, generate_final_summary, extract_text_from_pdf, summarize_resume
+from app.LLM.llm_service import generate_first_question, evaluate_and_continue, generate_interview_report, extract_text_from_pdf, summarize_resume
 from app.LLM.llm_sst import transcribe_audio
 from app.config.supabase import get_supabase
 import uuid
 from datetime import datetime
+import re
 
 
 load_dotenv()
@@ -84,7 +85,8 @@ def answer_interview(data: InterviewAnswerRequest):
 
     result = evaluate_and_continue(
         role=data.role,
-        experience=data.experience,
+        jd="", # Assuming no JD for this old endpoint
+        resume_summary="",
         history=[msg.dict() for msg in data.history]
     )
 
@@ -124,14 +126,14 @@ async def create_interview(
         )
         
         # Get public URL
-        resume_url = supabase.storage.from_('resumes').get_public_url(file_path)
-        print(f"✅ Resume uploaded: {resume_url}")
+        resume_url_res = supabase.storage.from_('resumes').get_public_url(file_path)
+        resume_file_url = resume_url_res["publicURL"] if isinstance(resume_url_res, dict) and "publicURL" in resume_url_res else resume_url_res
         
         # 3. Store Candidate
         candidate_data = {
             "name": candidate_name,
             "email": candidate_email,
-            "resume_file_url": resume_url,
+            "resume_file_url": resume_file_url,
             "resume_text": resume_text,
             "resume_summary": resume_summary
         }
@@ -236,14 +238,19 @@ async def start_interview_session(data: StartInterviewRequest):
              return JSONResponse(status_code=404, content={"error": "Session not found"})
         session = session_res.data[0]
         
-        # 2. Generate first question
+        # 2. Get candidate context
+        candidate_res = supabase.table('candidates').select('*').eq('id', session['candidate_id']).execute()
+        candidate = candidate_res.data[0] if candidate_res.data else {}
+        
+        # 3. Generate first question with FULL context
         question = generate_first_question(
             role=session['role'],
-            experience=0
+            jd=session.get('job_description', ''),
+            resume_summary=candidate.get('resume_summary', '')
         )
         
-        # 3. Update status to 'started'
-        supabase.table('interview_sessions').update({"status": "started", "started_at": datetime.now().isoformat()}).eq('id', data.session_id).execute()
+        # 4. Update status to 'in_progress'
+        supabase.table('interview_sessions').update({"status": "in_progress", "started_at": datetime.now().isoformat()}).eq('id', data.session_id).execute()
         
         return {"question": question}
     except Exception as e:
@@ -257,22 +264,136 @@ async def next_question_session(data: NextQuestionRequest):
     try:
         supabase = get_supabase()
         
-        # 1. Get session info
+        # 1. Store previous interaction
+        supabase.table('interview_responses').insert({
+            "session_id": data.session_id,
+            "question": data.previous_question,
+            "answer": data.answer
+        }).execute()
+        
+        # 2. Fetch all past responses to build history
+        responses_res = supabase.table('interview_responses').select('*').eq('session_id', data.session_id).order('created_at').execute()
+        history = []
+        for r in responses_res.data:
+            history.append({"role": "assistant", "content": r["question"]})
+            history.append({"role": "user", "content": r["answer"]})
+        
+        # 3. Get session and candidate info
         session_res = supabase.table('interview_sessions').select('*').eq('id', data.session_id).execute()
         if not session_res.data:
              return JSONResponse(status_code=404, content={"error": "Session not found"})
         session = session_res.data[0]
         
-        # 2. Generate next question/evaluate
-        # Simple iterative logic for now
+        candidate_res = supabase.table('candidates').select('*').eq('id', session['candidate_id']).execute()
+        candidate = candidate_res.data[0] if candidate_res.data else {}
+
+        # 4. Handle completion check (Example: end after 10 questions)
+        if len(responses_res.data) >= 2:
+            print(f"🏁 Interview completed for session {data.session_id}. Generating report...")
+            
+            # Generate Report
+            report_text = generate_interview_report(
+                role=session['role'],
+                jd=session.get('job_description', ''),
+                resume_summary=candidate.get('resume_summary', ''),
+                history=history
+            )
+            print(f"📄 Full AI Report Generated:\n{report_text}\n{'='*30}")
+            
+            # Simple Parsing
+            report_data = {
+                "session_id": data.session_id,
+                "summary": "",
+                "overall_score": 0.0,
+                "strengths": "",
+                "weaknesses": "",
+                "recommendation": ""
+            }
+            
+            import json
+            try:
+                # Clean JSON string (remove markdown blocks if present)
+                clean_json = report_text.strip()
+                if clean_json.startswith("```"):
+                    # Extract content between triple backticks
+                    lines = clean_json.split("\n")
+                    if lines[0].startswith("```"): lines = lines[1:]
+                    if lines[-1].startswith("```"): lines = lines[:-1]
+                    clean_json = "\n".join(lines).strip()
+                
+                # Parse JSON
+                parsed_report = json.loads(clean_json)
+                
+                # Update report_data with parsed values
+                report_data["overall_score"] = float(parsed_report.get("overall_score", 0.0))
+                report_data["strengths"] = str(parsed_report.get("strengths", ""))
+                report_data["weaknesses"] = str(parsed_report.get("weaknesses", ""))
+                report_data["recommendation"] = str(parsed_report.get("recommendation", ""))
+                report_data["summary"] = str(parsed_report.get("summary", ""))
+
+            except Exception as parse_err:
+                print(f"⚠️ Error parsing JSON report: {parse_err}")
+                report_data["summary"] = report_text # Fallback
+
+            # Store Report
+            supabase.table('interview_reports').insert(report_data).execute()
+            print(f"✅ Report stored for session {data.session_id}")
+
+            # Update Session Status
+            supabase.table('interview_sessions').update({
+                "status": "completed", 
+                "ended_at": datetime.now().isoformat()
+            }).eq('id', data.session_id).execute()
+            
+            return {
+                "type": "completed",
+                "session_id": data.session_id
+            }
+
+        # 5. Generate next question/evaluate with FULL context
         result = evaluate_and_continue(
             role=session['role'],
-            experience=0,
-            history=[{"role": "user", "content": data.answer}] 
+            jd=session.get('job_description', ''),
+            resume_summary=candidate.get('resume_summary', ''),
+            history=history
         )
         
-        return {"response": result}
+        return {
+            "type": "question",
+            "question": result
+        }
         
     except Exception as e:
         print(f"❌ Error in next question: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# 📄 Get Interview Report
+@app.get("/interview-report/{session_id}")
+async def get_interview_report(session_id: str):
+    try:
+        supabase = get_supabase()
+        res = supabase.table('interview_reports').select('*').eq('session_id', session_id).single().execute()
+        if not res.data:
+            return JSONResponse(status_code=404, content={"error": "Report not found"})
+        return res.data
+    except Exception as e:
+        print(f"❌ Error fetching report: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+# 📋 Get All Interviews (History)
+@app.get("/interviews")
+async def get_all_interviews(hr_id: Optional[str] = None):
+    try:
+        supabase = get_supabase()
+        # Explicitly select the child table columns. Supabase returns these as a list in the JSON.
+        query = supabase.table('interview_sessions').select('*, candidates(name, email), interview_reports(overall_score)')
+        
+        if hr_id:
+            query = query.eq('hr_id', hr_id)
+            
+        res = query.order('created_at', desc=True).execute()
+        return res.data
+    except Exception as e:
+        print(f"❌ Error fetching interviews: {str(e)}")
         return JSONResponse(status_code=500, content={"error": str(e)})

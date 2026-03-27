@@ -9,18 +9,24 @@ def get_client():
         raise ValueError("Missing GROQ_API_KEY")
     return Groq(api_key=GROQ_API_KEY)
 
-def _interviewer_system_prompt(role: str, experience: int) -> str:
+def _interviewer_system_prompt(role: str, jd: str = "", resume_summary: str = "") -> str:
+    context = ""
+    if resume_summary:
+        context += f"\n- Candidate Background (from Resume): {resume_summary}"
+    if jd:
+        context += f"\n- Job Description: {jd}"
+
     return f"""\
 You are EDITH, a senior technical interviewer.
 
 ## Context
-- Target role: {role}
-- Candidate experience: {experience} years
+- Target role: {role}{context}
 
 ## Objectives
 - Run a structured, realistic technical interview.
 - Ask exactly ONE question at a time and wait for the candidate's answer.
 - Keep the interview aligned to the target role and experience level.
+- Use the candidate's resume and job description to ask highly relevant, specific questions.
 
 ## Style guidelines
 - Be concise, direct, and professional.
@@ -35,18 +41,18 @@ You are EDITH, a senior technical interviewer.
 """
 
 
-def generate_first_question(role: str, experience: int):
+def generate_first_question(role: str, jd: str = "", resume_summary: str = ""):
 
     client = get_client()
 
     messages = [
         {
             "role": "system",
-            "content": _interviewer_system_prompt(role=role, experience=experience)
+            "content": _interviewer_system_prompt(role=role, jd=jd, resume_summary=resume_summary)
         },
         {
             "role": "user",
-            "content": "Start the interview now. Ask the first technical question. Output ONLY the question text, no JSON, no formatting."
+            "content": "Start the interview now. Ask the first technical question based on the candidate's resume and the job role. Output ONLY the question text."
         }
     ]
 
@@ -57,27 +63,25 @@ def generate_first_question(role: str, experience: int):
     )
 
     response_text = completion.choices[0].message.content.strip()
-    # Remove any accidental JSON formatting or markdown if present
     if response_text.startswith("```"):
         lines = response_text.split("\n")
         response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
     return response_text
 
 
-def evaluate_and_continue(role: str, experience: int, history: list):
+def evaluate_and_continue(role: str, jd: str = "", resume_summary: str = "", history: list = []):
 
     client = get_client()
 
     messages = [
         {
             "role": "system",
-            "content": _interviewer_system_prompt(role=role, experience=experience)
+            "content": _interviewer_system_prompt(role=role, jd=jd, resume_summary=resume_summary)
         }
     ]
 
     messages.extend(history)
 
-    # Instruct to comment on previous answer and ask next question in plain text
     messages.append(
         {
             "role": "user",
@@ -92,14 +96,13 @@ def evaluate_and_continue(role: str, experience: int, history: list):
     )
 
     response_text = completion.choices[0].message.content.strip()
-    # Remove any accidental JSON formatting or markdown if present
     if response_text.startswith("```"):
         lines = response_text.split("\n")
         response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
     return response_text
 
 
-def generate_final_summary(role: str, experience: int, history: list):
+def generate_interview_report(role: str, jd: str, resume_summary: str, history: list):
 
     client = get_client()
 
@@ -107,24 +110,27 @@ def generate_final_summary(role: str, experience: int, history: list):
         {
             "role": "system",
             "content": f"""\
-You are EDITH, a senior technical interviewer providing a final interview summary.
+You are EDITH, a senior technical interviewer providing a final performance report for a candidate.
 
 ## Context
 - Target role: {role}
-- Candidate experience: {experience} years
+- Job Description: {jd}
+- Candidate Background: {resume_summary}
 
 ## Task
-Review the entire conversation history and provide a comprehensive final evaluation summary.
+Review the entire interview conversation history and provide a structured final evaluation.
 
-## Output format
-Provide a structured summary in plain text (no JSON, no markdown) covering:
-1. Overall assessment (2-3 sentences)
-2. Key strengths demonstrated (2-3 bullet points or sentences)
-3. Areas for improvement (2-3 bullet points or sentences)
-4. Final score out of 10
-5. Recommendation (hire/not hire/conditional)
+## Output Format (STRICT JSON)
+You MUST return ONLY a valid JSON object. Do not include any other text or markdown blocks outside the JSON.
+{{
+  "overall_score": float (0-10),
+  "strengths": "string (bullet points separated by semicolons)",
+  "weaknesses": "string (bullet points separated by semicolons)",
+  "recommendation": "string (Hire / No Hire / etc.)",
+  "summary": "string (professional summary)"
+}}
 
-Be professional, constructive, and specific. Reference specific answers from the conversation.
+Be professional, objective, and specific.
 """
         }
     ]
@@ -134,22 +140,17 @@ Be professional, constructive, and specific. Reference specific answers from the
     messages.append(
         {
             "role": "user",
-            "content": "The interview is complete. Provide the final evaluation summary based on all answers given. Output ONLY plain text - no JSON, no markdown formatting."
+            "content": "The interview is complete. Generate the performance report now."
         }
     )
 
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=messages,
-        temperature=0.7,
+        temperature=0.3, # Lower temperature for more consistent formatting
     )
 
-    response_text = completion.choices[0].message.content.strip()
-    # Remove any accidental JSON formatting or markdown if present
-    if response_text.startswith("```"):
-        lines = response_text.split("\n")
-        response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
-    return response_text
+    return completion.choices[0].message.content.strip()
 
 
 def extract_text_from_pdf(file_content: bytes) -> str:
