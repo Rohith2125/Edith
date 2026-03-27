@@ -1,6 +1,7 @@
 import { useState } from "react";
 import supabase from "../api/supabase";
 import { useNavigate, Link } from "react-router-dom";
+import { syncUser } from "../api/userSync";
 
 function Login() {
   const [mail, setMail] = useState("");
@@ -19,10 +20,15 @@ function Login() {
       });
 
       if (error) throw error;
+ 
+      // SYNC USER:
+      if (data?.user) {
+          await syncUser(data.user);
+      }
 
       console.log("Logged in:", data);
       alert("Login successful!");
-      navigate('/interview');
+      navigate('/hr-dashboard');
     } catch (err) {
       alert(err.message);
     } finally {
@@ -35,7 +41,7 @@ function Login() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/interview'
+          redirectTo: window.location.origin + '/hr-dashboard'
         }
       });
       if (error) throw error;

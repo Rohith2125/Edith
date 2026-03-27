@@ -1,5 +1,7 @@
 from groq import Groq
 from app.config.settings import GROQ_API_KEY
+from pypdf import PdfReader
+import io
 
 
 def get_client():
@@ -148,3 +150,42 @@ Be professional, constructive, and specific. Reference specific answers from the
         lines = response_text.split("\n")
         response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
     return response_text
+
+
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """Extracts all text from a PDF file byte stream."""
+    try:
+        reader = PdfReader(io.BytesIO(file_content))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        print(f"Error extracting PDF: {e}")
+        return ""
+
+
+def summarize_resume(resume_text: str) -> str:
+    """Generates a concise professional summary of the extracted resume text."""
+    if not resume_text:
+        return "No text could be extracted from the resume."
+
+    client = get_client()
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an HR AI assistant. Your task is to provide a concise, professional summary (maximum 150 words) of a candidate's resume focusing on key skills, experience, and achievements."
+        },
+        {
+            "role": "user",
+            "content": f"Summarize this resume:\n\n{resume_text[:4000]}"  # Truncate to avoid token limits
+        }
+    ]
+
+    completion = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=messages,
+        temperature=0.5,
+    )
+
+    return completion.choices[0].message.content.strip()

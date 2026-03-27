@@ -1,10 +1,12 @@
 import { useState } from "react";
 import supabase from "../api/supabase";
 import { Link, useNavigate } from "react-router-dom";
+import { syncUser } from "../api/userSync";
 
 function Register() {
   const [mail, setMail] = useState("");
   const [pass, setPass] = useState("");
+  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -19,10 +21,16 @@ function Register() {
       });
 
       if (error) throw error;
+      
+      // SYNC USER:
+      if (data?.user) {
+          await syncUser(data.user, name);
+      }
 
       alert("Check your email for confirmation!");
       setMail("");
       setPass("");
+      setName("");
       // Navigate to login after successful registration
       navigate("/login");
     } catch (err) {
@@ -37,7 +45,7 @@ function Register() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/interview'
+          redirectTo: window.location.origin + '/hr-dashboard'
         }
       });
       if (error) throw error;
@@ -95,6 +103,20 @@ function Register() {
           </div>
 
           <form onSubmit={register} className="space-y-6">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                Full Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              />
+            </div>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                 Email
