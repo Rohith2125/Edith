@@ -200,7 +200,7 @@ async def next_question_session(data: NextQuestionRequest):
         candidate_res = supabase.table('candidates').select('*').eq('id', session['candidate_id']).execute()
         candidate = candidate_res.data[0] if candidate_res.data else {}
 
-        if len(responses_res.data) >= 10: # Standard 10 questions
+        if len(responses_res.data) >= 2: # Standard 10 questions
             report_text = generate_interview_report(
                 role=session['role'], jd=session.get('job_description', ''),
                 resume_summary=candidate.get('resume_summary', ''), history=history
