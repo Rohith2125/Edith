@@ -10,10 +10,16 @@ from app.models import InterviewStartRequest
 load_dotenv()
 app = FastAPI()
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URLS = os.getenv("FRONTEND_URL", "http://localhost:5173").split(",")
 allow_origins_list = ["http://localhost:5173"]
-if FRONTEND_URL != "http://localhost:5173":
-    allow_origins_list.append(FRONTEND_URL)
+
+for url in FRONTEND_URLS:
+    clean_url = url.strip()
+    if clean_url and clean_url not in allow_origins_list:
+        allow_origins_list.append(clean_url)
+
+# Print for debugging in Render logs
+print(f"🌍 Allowed Origins: {allow_origins_list}")
 
 app.add_middleware(
     CORSMiddleware,
